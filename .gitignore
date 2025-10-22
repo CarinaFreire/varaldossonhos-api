@@ -1,0 +1,16 @@
+# ⛔️ Arquivos de ambiente com chaves secretas
+.env
+.env.local
+/config/.env.local
+
+# 📦 Dependências do Node.js
+node_modules/
+
+# 🗃️ Logs e caches temporários
+npm-debug.log
+*.log
+.DS_Store
+
+# 🧱 Build e arquivos temporários
+dist/
+.vercel/
