@@ -3,14 +3,14 @@
 // ------------------------------------------------------------
 // 🔧 Integração real com EmailJS (ou modo simulado se não configurado)
 // ------------------------------------------------------------
-// ✅ Variáveis de ambiente (defina na Vercel):
+// ✅ Variáveis de ambiente (defina na Vercel ou Render):
 //    EMAILJS_SERVICE_ID
 //    EMAILJS_TEMPLATE_ID
-//    EMAILJS_USER_ID
+//    EMAILJS_USER_ID  (ou EMAILJS_PUBLIC_KEY)
 // ------------------------------------------------------------
 // 🏆 Recursos:
 //   - Simulação automática se EmailJS não estiver configurado
-//   - Mensagem de pontuação automática (ex: “Você ganhou 10 pontos!”)
+//   - Mensagem de pontuação automática (“Você ganhou 10 pontos!”)
 // ============================================================
 
 import fetch from "node-fetch";
@@ -18,7 +18,7 @@ import fetch from "node-fetch";
 export default async function enviarEmail(destinatario, assunto, mensagem, pontuacao = 0) {
   const SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
   const TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
-  const USER_ID = process.env.EMAILJS_USER_ID;
+  const USER_ID = process.env.EMAILJS_USER_ID || process.env.EMAILJS_PUBLIC_KEY; // 🔹 Ajuste principal
 
   if (!SERVICE_ID || !TEMPLATE_ID || !USER_ID) {
     console.warn("⚠️ EmailJS não configurado. Envio de e-mail será simulado.");
@@ -67,3 +67,4 @@ export default async function enviarEmail(destinatario, assunto, mensagem, pontu
     return { status: "erro", mensagem: "Falha ao enviar e-mail: " + erro.message };
   }
 }
+
