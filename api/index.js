@@ -1,28 +1,32 @@
-// ============================================================
-// 💙 VARAL DOS SONHOS — /api/index.js (versão completa e automatizada)
+// // ============================================================
+// 💙 VARAL DOS SONHOS — /api/index.js (versão final ajustada)
+// ------------------------------------------------------------
+// Suporte completo a:
+//  - Cadastro e login de doadores
+//  - Registro de adoções
+//  - Atualização automática de status e mensagens
 // ============================================================
 
 import dotenv from "dotenv";
 dotenv.config();
 import Airtable from "airtable";
 import enviarEmail from "./lib/enviarEmail.js";
-import atualizarMensagemDoacao from "./lib/atualizarStatus.js";
 import http from "http";
 
 // ============================================================
-// 🔑 Configuração Airtable
+// 🔑 Configuração do Airtable
 // ============================================================
 const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 
 if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
-  console.warn("⚠️ Defina AIRTABLE_API_KEY e AIRTABLE_BASE_ID nas variáveis do Render.");
+  console.warn("⚠️ Defina AIRTABLE_API_KEY e AIRTABLE_BASE_ID nas variáveis de ambiente.");
 }
 
 const base = new Airtable({ apiKey: AIRTABLE_API_KEY }).base(AIRTABLE_BASE_ID);
 
 // ============================================================
-// ⚙️ Funções auxiliares
+// ⚙️ Helpers
 // ============================================================
 function sendJson(res, status, data) {
   res.statusCode = status;
@@ -79,6 +83,7 @@ export default async function handler(req, res) {
       const registros = await base("cartinhas")
         .select({ filterByFormula: "IF({status}='disponível', TRUE(), FALSE())" })
         .all();
+
       const cartinhas = registros.map((r) => ({
         id: r.id,
         nome: r.fields.nome_crianca || r.fields.primeiro_nome || "Anônimo",
@@ -88,6 +93,7 @@ export default async function handler(req, res) {
         imagem_cartinha: r.fields.imagem_cartinha?.[0]?.url || "",
         status: r.fields.status || "disponível",
       }));
+
       return sendJson(res, 200, cartinhas);
     }
 
@@ -112,6 +118,7 @@ export default async function handler(req, res) {
       const novo = await base("doador").create([
         {
           fields: {
+            id_doador: `DOA-${Date.now()}`,
             nome,
             primeiro_nome: nome.split(" ")[0],
             email,
@@ -142,7 +149,43 @@ export default async function handler(req, res) {
     }
 
     // ============================================================
-    // 💝 REGISTRO DE ADOÇÕES
+    // 🔐 LOGIN DE DOADOR
+    // ============================================================
+    if ((pathname === "/api/login" || rota === "login") && method === "POST") {
+      const body = await parseJsonBody(req);
+      if (body === null) return sendJson(res, 400, { error: "Corpo inválido" });
+
+      const { email, senha } = body;
+      if (!email || !senha)
+        return sendJson(res, 400, { error: "E-mail e senha obrigatórios." });
+
+      const registros = await base("doador")
+        .select({ filterByFormula: `{email} = "${email}"`, maxRecords: 1 })
+        .firstPage();
+
+      if (registros.length === 0)
+        return sendJson(res, 401, { error: "E-mail não encontrado." });
+
+      const doador = registros[0].fields;
+
+      if (doador.senha !== senha)
+        return sendJson(res, 401, { error: "Senha incorreta." });
+
+      return sendJson(res, 200, {
+        sucesso: true,
+        usuario: {
+          id: registros[0].id,
+          id_doador: doador.id_doador,
+          nome: doador.nome,
+          email: doador.email,
+          cidade: doador.cidade,
+          status: doador.status,
+        },
+      });
+    }
+
+    // ============================================================
+    // 💝 ADOÇÕES — cria registro na tabela “doacoes”
     // ============================================================
     if ((pathname === "/api/adocoes" || rota === "adocoes") && method === "POST") {
       const body = await parseJsonBody(req);
@@ -152,8 +195,6 @@ export default async function handler(req, res) {
       if (!usuarioEmail || !Array.isArray(cartinhas))
         return sendJson(res, 400, { error: "Dados inválidos." });
 
-      const dataHoje = new Date().toISOString().split("T")[0];
-
       for (const c of cartinhas) {
         await base("doacoes").create([
           {
@@ -161,10 +202,10 @@ export default async function handler(req, res) {
               doador: usuarioEmail,
               cartinha: c.nome || c.id || "",
               ponto_coleta: ponto_coleta || c.ponto_coleta || "",
-              data_doacao: dataHoje,
+              data_doacao: new Date().toISOString().split("T")[0],
               status_doacao: "aguardando_entrega",
               mensagem_confirmacao:
-                "🎁 Sua cartinha foi adotada! Aguarde confirmação para a compra do presente.",
+                "🎁 Sua cartinha foi adotada! Aguarde confirmação para compra do presente.",
             },
           },
         ]);
@@ -174,47 +215,16 @@ export default async function handler(req, res) {
         await enviarEmail(
           usuarioEmail,
           "Confirmação de Adoção 💙",
-          `Recebemos sua adoção de ${cartinhas.length} cartinha(s) no ponto ${ponto_coleta}. Obrigado por espalhar sonhos!`
+          "🎁 Sua cartinha foi adotada! Aguarde confirmação para compra do presente."
         );
       } catch (err) {
-        console.warn("Erro ao enviar e-mail de confirmação:", err);
+        console.warn("Erro ao enviar confirmação:", err);
       }
 
       return sendJson(res, 200, {
         sucesso: true,
         message: "Adoções registradas com sucesso!",
       });
-    }
-
-    // ============================================================
-    // 🔄 Atualização de status + mensagem automática
-    // ============================================================
-    if ((pathname === "/api/atualizar-status" || rota === "atualizar-status") && method === "POST") {
-      const body = await parseJsonBody(req);
-      const { id_doacao, novo_status } = body;
-
-      if (!id_doacao || !novo_status)
-        return sendJson(res, 400, { error: "Campos obrigatórios: id_doacao e novo_status." });
-
-      try {
-        const sucessoMsg = await atualizarMensagemDoacao(id_doacao, novo_status);
-        if (!sucessoMsg) throw new Error("Falha ao atualizar mensagem.");
-
-        await base("doacoes").update([
-          {
-            id: id_doacao,
-            fields: { status_doacao: novo_status },
-          },
-        ]);
-
-        return sendJson(res, 200, {
-          sucesso: true,
-          mensagem: "Status e mensagem atualizados com sucesso!",
-        });
-      } catch (erro) {
-        console.error("❌ Erro ao atualizar status:", erro);
-        return sendJson(res, 500, { error: erro.message });
-      }
     }
 
     // ============================================================
@@ -235,5 +245,5 @@ export default async function handler(req, res) {
 // ============================================================
 const PORT = process.env.PORT || 5000;
 http.createServer(handler).listen(PORT, () => {
-  console.log(`🚀 Servidor Varal dos Sonhos rodando na porta ${PORT}`);
+  console.log(`Servidor Varal dos Sonhos rodando na porta ${PORT} 🚀`);
 });
