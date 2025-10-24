@@ -65,6 +65,6 @@ export default async function enviarEmail(destinatario, assunto, mensagem, pontu
   } catch (erro) {
     console.error("❌ Erro no envio de e-mail:", erro);
     return { status: "erro", mensagem: "Falha ao enviar e-mail: " + erro.message };
-  }
+  }git
 }
 

@@ -1,18 +1,12 @@
 // ============================================================
-// 💙 VARAL DOS SONHOS — /api/index.js (VERSÃO FINAL)
-// ------------------------------------------------------------
-// 🔧 Integrações:
-//   • Airtable — armazenamento principal
-//   • EmailJS — envio de confirmações
-//   • .NET MAUI / Vercel — consumo de rotas REST
+// 💙 VARAL DOS SONHOS — BACKEND UNIFICADO (Render + Airtable + EmailJS)
 // ============================================================
 
+import http from "http";
+import fetch from "node-fetch";
+import Airtable from "airtable";
 import dotenv from "dotenv";
 dotenv.config();
-
-import Airtable from "airtable";
-import enviarEmail from "./lib/enviarEmail.js";
-import http from "http";
 
 // ============================================================
 // 🔑 Configuração Airtable
@@ -21,13 +15,60 @@ const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 
 if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
-  console.warn("⚠️ Defina AIRTABLE_API_KEY e AIRTABLE_BASE_ID nas variáveis de ambiente.");
+  console.error("❌ Variáveis AIRTABLE_API_KEY e AIRTABLE_BASE_ID não configuradas!");
 }
 
 const base = new Airtable({ apiKey: AIRTABLE_API_KEY }).base(AIRTABLE_BASE_ID);
 
 // ============================================================
-// ⚙️ Funções auxiliares
+// 📧 Função auxiliar — Envia e-mails com EmailJS (ou simula)
+// ============================================================
+async function enviarEmail(destinatario, assunto, mensagem) {
+  const SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
+  const TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
+  const PUBLIC_KEY = process.env.EMAILJS_PUBLIC_KEY;
+
+  if (!SERVICE_ID || !TEMPLATE_ID || !PUBLIC_KEY) {
+    console.warn("⚠️ EmailJS não configurado. Enviando e-mail simulado:");
+    console.log("📧 Para:", destinatario);
+    console.log("Assunto:", assunto);
+    console.log("Mensagem:", mensagem);
+    return { status: "simulado" };
+  }
+
+  const payload = {
+    service_id: SERVICE_ID,
+    template_id: TEMPLATE_ID,
+    user_id: PUBLIC_KEY,
+    template_params: {
+      to_email: destinatario,
+      subject: assunto,
+      message: mensagem,
+    },
+  };
+
+  try {
+    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText);
+    }
+
+    console.log(`✅ E-mail enviado com sucesso para ${destinatario}`);
+    return { status: "ok" };
+  } catch (err) {
+    console.error("❌ Erro ao enviar e-mail:", err.message);
+    return { status: "erro", mensagem: err.message };
+  }
+}
+
+// ============================================================
+// ⚙️ Utilitários gerais
 // ============================================================
 function sendJson(res, status, data) {
   res.statusCode = status;
@@ -38,9 +79,9 @@ function sendJson(res, status, data) {
   res.end(JSON.stringify(data, null, 2));
 }
 
-async function parseJsonBody(req) {
+async function parseBody(req) {
   const chunks = [];
-  for await (const c of req) chunks.push(c);
+  for await (const chunk of req) chunks.push(chunk);
   if (!chunks.length) return {};
   try {
     return JSON.parse(Buffer.concat(chunks).toString());
@@ -49,21 +90,13 @@ async function parseJsonBody(req) {
   }
 }
 
-function getRotaFromUrl(reqUrl, headers) {
-  try {
-    const u = new URL(reqUrl, `http://${headers.host}`);
-    return { fullUrl: u, rota: u.searchParams.get("rota") };
-  } catch {
-    const parts = reqUrl.split("?rota=");
-    return { fullUrl: null, rota: parts[1] || null };
-  }
-}
+// ============================================================
+// 🌈 ROTAS
+// ============================================================
+async function handler(req, res) {
+  const { method, url } = req;
 
-// ============================================================
-// 🌈 HANDLER PRINCIPAL
-// ============================================================
-export default async function handler(req, res) {
-  if (req.method === "OPTIONS") {
+  if (method === "OPTIONS") {
     res.statusCode = 204;
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -72,139 +105,103 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { method, url, headers } = req;
-  const { fullUrl, rota } = getRotaFromUrl(url, headers);
-  const pathname = fullUrl ? fullUrl.pathname : url.split("?")[0];
-
   try {
-    // ============================================================
-    // 🗓️ EVENTOS
-    // ============================================================
-    if ((pathname === "/api/eventos" || rota === "eventos") && method === "GET") {
-      const records = await base("eventos")
-        .select({
-          filterByFormula: "IF({destaque_home}=TRUE(), TRUE(), FALSE())",
-          sort: [{ field: "data_inicio", direction: "asc" }],
-        })
-        .all();
-
-      const eventos = records.map((r) => ({
-        id: r.id,
-        nome: r.fields.nome_evento || r.fields.nome || "Evento sem nome",
-        data_inicio: r.fields.data_inicio || "",
-        descricao: r.fields.descricao || "",
-        imagem:
-          r.fields.imagem_evento?.[0]?.url ||
-          r.fields.Imagem_evento?.[0]?.url ||
-          "/imagens/evento-padrao.jpg",
-      }));
-
-      return sendJson(res, 200, eventos);
-    }
-
-    // ============================================================
-    // 💌 CARTINHAS
-    // ============================================================
-    if ((pathname === "/api/cartinhas" || rota === "cartinhas") && method === "GET") {
+    // ------------------------------------------------------------
+    // 📜 ROTA: /api/cartinhas
+    // ------------------------------------------------------------
+    if (url.startsWith("/api/cartinhas") && method === "GET") {
       const registros = await base("cartinhas")
         .select({ filterByFormula: "IF({status}='disponível', TRUE(), FALSE())" })
         .all();
 
-      const cartinhas = registros.map((r) => {
-        const f = r.fields;
-        return {
-          id: r.id,
-          nome: f.nome_crianca || f.primeiro_nome || "Anônimo",
-          idade: f.idade || "",
-          sonho: f.sonho || "",
-          ponto_coleta: f.ponto_coleta || "",
-          imagem_cartinha: f.imagem_cartinha?.[0]?.url || "",
-          status: f.status || "disponível",
-        };
-      });
+      const cartinhas = registros.map((r) => ({
+        id: r.id,
+        nome: r.fields.nome_crianca || r.fields.primeiro_nome || "Anônimo",
+        idade: r.fields.idade || "",
+        sonho: r.fields.sonho || "",
+        imagem_cartinha: r.fields.imagem_cartinha?.[0]?.url || "",
+        ponto_coleta: r.fields.ponto_coleta || "",
+        status: r.fields.status || "disponível",
+      }));
 
       return sendJson(res, 200, cartinhas);
     }
 
-    // ============================================================
-    // 📍 PONTOS DE COLETA
-    // ============================================================
-    if ((pathname === "/api/pontosdecoleta" || rota === "pontosdecoleta") && method === "GET") {
-      const registros = await base("pontosdecoleta").select().all();
-      const pontos = registros.map((r) => ({
-        id: r.id,
-        nome_local: r.fields.nome_local || "",
-        endereco: r.fields.endereco || "",
-        telefone: r.fields.telefone || "",
-        email: r.fields.email || "",
-        horario_funcionamento: r.fields.horario_funcionamento || "",
-        responsavel: r.fields.responsavel || "",
-        lat: r.fields.lat || null,
-        lng: r.fields.lng || null,
-      }));
-      return sendJson(res, 200, pontos);
-    }
+    // ------------------------------------------------------------
+    // 🧍 ROTA: /api/cadastro
+    // ------------------------------------------------------------
+    if (url.startsWith("/api/cadastro") && method === "POST") {
+      const body = await parseBody(req);
+      if (!body) return sendJson(res, 400, { erro: "Corpo inválido." });
 
-    // ============================================================
-    // 🧍 CADASTRO
-    // ============================================================
-    if ((pathname === "/api/cadastro" || rota === "cadastro") && method === "POST") {
-      const body = await parseJsonBody(req);
-      if (body === null) return sendJson(res, 400, { error: "Corpo inválido" });
-
-      const { nome, email, senha } = body;
+      const { nome, email, senha, telefone, cidade } = body;
       if (!nome || !email || !senha)
-        return sendJson(res, 400, { error: "Campos obrigatórios faltando." });
+        return sendJson(res, 400, { erro: "Campos obrigatórios faltando." });
 
-      const existentes = await base("usuario")
+      // Evita duplicado
+      const existente = await base("doador")
         .select({ filterByFormula: `{email} = "${email}"`, maxRecords: 1 })
         .firstPage();
-      if (existentes.length > 0)
-        return sendJson(res, 409, { error: "E-mail já cadastrado." });
 
-      await base("usuario").create([
+      if (existente.length > 0)
+        return sendJson(res, 409, { erro: "E-mail já cadastrado." });
+
+      const novo = await base("doador").create([
         {
           fields: {
+            id_doador: "u" + Math.random().toString(36).substring(2, 8),
             nome,
+            primeironome: nome.split(" ")[0],
             email,
+            telefone: telefone || "",
             senha,
-            tipo_usuario: "doador",
+            cidade: cidade || "",
             status: "ativo",
-            data_cadastro: new Date().toISOString().split("T")[0],
+            datacadastro: new Date().toISOString().split("T")[0],
           },
         },
       ]);
 
-      await enviarEmail(email, "Bem-vindo ao Varal dos Sonhos", `Olá ${nome}, seu cadastro foi realizado!`);
-      return sendJson(res, 200, { message: "Usuário cadastrado com sucesso." });
+      await enviarEmail(
+        email,
+        "Bem-vindo ao Varal dos Sonhos 💙",
+        `Olá ${nome}, seu cadastro foi realizado com sucesso!`
+      );
+
+      return sendJson(res, 200, { sucesso: true, id: novo[0].id });
     }
 
-    // ============================================================
-    // 💝 ADOÇÕES — corrigido
-    // ============================================================
-    if ((pathname === "/api/adocoes" || rota === "adocoes") && method === "POST") {
-      const body = await parseJsonBody(req);
-      if (body === null)
-        return sendJson(res, 400, { error: "Corpo inválido ou JSON malformado." });
+    // ------------------------------------------------------------
+    // 💝 ROTA: /api/adocoes
+    // ------------------------------------------------------------
+    if (url.startsWith("/api/adocoes") && method === "POST") {
+      const body = await parseBody(req);
+      if (!body) return sendJson(res, 400, { erro: "Corpo inválido." });
 
       const { usuarioEmail, cartinhas } = body;
+      if (!usuarioEmail || !Array.isArray(cartinhas))
+        return sendJson(res, 400, { erro: "Dados inválidos." });
 
-      if (!usuarioEmail || !Array.isArray(cartinhas) || cartinhas.length === 0) {
-        return sendJson(res, 400, { error: "Dados inválidos. Envie e-mail e cartinhas." });
-      }
+      const registrosDoador = await base("doador")
+        .select({ filterByFormula: `{email} = "${usuarioEmail}"`, maxRecords: 1 })
+        .firstPage();
 
-      console.log("📦 Registrando adoções para:", usuarioEmail);
+      const nomeDoador =
+        registrosDoador.length > 0
+          ? registrosDoador[0].fields.nome
+          : usuarioEmail;
 
       for (const c of cartinhas) {
         await base("doacoes").create([
           {
             fields: {
-              doador: usuarioEmail, // ✅ compatível com texto simples ou long text
-              cartinha: c.id_cartinha || c.id || "",
+              id_doacao: "d" + Math.random().toString(36).substring(2, 8),
+              doador: nomeDoador,
+              cartinha: c.nome || c.id || "",
               ponto_coleta: c.ponto_coleta || "",
               data_doacao: new Date().toISOString().split("T")[0],
               status_doacao: "aguardando_entrega",
-              mensagem_confirmacao: `Adoção registrada para ${usuarioEmail}`,
+              mensagem_confirmacao: `💙 Adoção registrada para ${nomeDoador}`,
             },
           },
         ]);
@@ -212,26 +209,27 @@ export default async function handler(req, res) {
 
       await enviarEmail(
         usuarioEmail,
-        "Confirmação de Adoção 💙",
-        `Recebemos sua adoção de ${cartinhas.length} cartinha(s). Obrigado por espalhar sonhos! 🌟`
+        "Confirmação de Adoção 💌",
+        `Olá ${nomeDoador}, recebemos sua adoção de ${cartinhas.length} cartinha(s)! 💙`
       );
 
-      return sendJson(res, 200, { success: true, message: "Adoções registradas com sucesso!" });
+      return sendJson(res, 200, { sucesso: true, mensagem: "Adoções registradas com sucesso!" });
     }
 
-    // ============================================================
-    // 🚫 Rota não encontrada
-    // ============================================================
+    // ------------------------------------------------------------
+    // 🚫 DEFAULT
+    // ------------------------------------------------------------
     return sendJson(res, 404, { erro: "Rota não encontrada." });
-  } catch (erro) {
-    console.error("❌ Erro interno:", erro);
-    return sendJson(res, 500, { erro: "Erro interno no servidor.", detalhe: erro.message });
+  } catch (err) {
+    console.error("❌ Erro interno:", err);
+    return sendJson(res, 500, { erro: "Erro interno no servidor.", detalhe: err.message });
   }
 }
 
 // ============================================================
-// 🚀 Inicialização do servidor local
+// 🚀 Inicializa servidor
 // ============================================================
 const PORT = process.env.PORT || 5000;
-const server = http.createServer(handler);
-server.listen(PORT, () => console.log(`Servidor Varal dos Sonhos rodando na porta ${PORT} 🚀`));
+http.createServer(handler).listen(PORT, () => {
+  console.log(`🚀 Servidor Varal dos Sonhos rodando na porta ${PORT}`);
+});
