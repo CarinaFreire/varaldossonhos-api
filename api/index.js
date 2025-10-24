@@ -72,7 +72,7 @@ export default async function handler(req, res) {
 
   try {
     // ============================================================
-    // 🧍 CADASTRO DE DOADOR
+    // 👤 CADASTRO DE DOADOR
     // ============================================================
     if ((pathname === "/api/cadastro" || rota === "cadastro") && method === "POST") {
       const body = await parseJsonBody(req);
@@ -94,6 +94,7 @@ export default async function handler(req, res) {
       const novo = await base("doadores").create([
         {
           fields: {
+            id_doador: `D${Date.now()}`,
             nome,
             primeiro_nome,
             email,
@@ -106,7 +107,7 @@ export default async function handler(req, res) {
         },
       ]);
 
-      await enviarEmail(email, "Bem-vindo ao Varal dos Sonhos 💙", `Olá ${nome}, seu cadastro foi realizado com sucesso!`);
+      await enviarEmail(email, "💙 Bem-vindo ao Varal dos Sonhos", `Olá ${nome}, seu cadastro foi realizado com sucesso!`);
 
       return sendJson(res, 200, { success: true, id: novo[0].id });
     }
@@ -119,12 +120,13 @@ export default async function handler(req, res) {
       if (!body) return sendJson(res, 400, { error: "Corpo inválido" });
 
       const { email, senha } = body;
+
       const registros = await base("doadores")
         .select({ filterByFormula: `{email} = '${email}'`, maxRecords: 1 })
         .firstPage();
 
       if (registros.length === 0)
-        return sendJson(res, 404, { error: "Usuário não encontrado." });
+        return sendJson(res, 404, { error: "E-mail não encontrado." });
 
       const usuario = registros[0].fields;
       if (usuario.senha !== senha)
@@ -133,9 +135,10 @@ export default async function handler(req, res) {
       return sendJson(res, 200, {
         success: true,
         usuario: {
-          id: registros[0].id,
+          id_doador: usuario.id_doador,
           nome: usuario.nome,
           email: usuario.email,
+          cidade: usuario.cidade,
         },
       });
     }
@@ -193,6 +196,7 @@ export default async function handler(req, res) {
         await base("doacoes").create([
           {
             fields: {
+              id_doacao: `DOA-${Date.now()}`,
               doador: usuarioEmail,
               cartinha: c.nome || "",
               ponto_coleta: c.ponto_coleta || "",
@@ -204,7 +208,11 @@ export default async function handler(req, res) {
         ]);
       }
 
-      await enviarEmail(usuarioEmail, "💙 Adoção registrada!", "Sua adoção foi registrada com sucesso. Obrigado por espalhar sonhos!");
+      await enviarEmail(
+        usuarioEmail,
+        "💙 Adoção registrada!",
+        "Sua adoção foi registrada com sucesso. Obrigado por espalhar sonhos!"
+      );
 
       return sendJson(res, 200, { success: true, message: "Adoção registrada com sucesso!" });
     }
