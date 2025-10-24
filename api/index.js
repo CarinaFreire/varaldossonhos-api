@@ -151,13 +151,13 @@ async function handler(req, res) {
           fields: {
             id_doador: "u" + Math.random().toString(36).substring(2, 8),
             nome,
-            primeironome: nome.split(" ")[0],
+            primei_ronome: nome.split(" ")[0],
             email,
             telefone: telefone || "",
             senha,
             cidade: cidade || "",
             status: "ativo",
-            datacadastro: new Date().toISOString().split("T")[0],
+            data_cadastro: new Date().toISOString().split("T")[0],
           },
         },
       ]);
