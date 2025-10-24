@@ -1,5 +1,5 @@
 // ============================================================
-// 💙 VARAL DOS SONHOS — /api/index.js (versão estável)
+// 💙 VARAL DOS SONHOS — /api/index.js (versão estável e compatível)
 // ============================================================
 
 import dotenv from "dotenv";
@@ -111,13 +111,13 @@ export default async function handler(req, res) {
         {
           fields: {
             nome,
-            primeiro_nome: nome.split(" ")[0], // ✅ compatível com Airtable
+            primeiro_nome: nome.split(" ")[0],
             email,
             telefone: telefone || "",
             cidade: cidade || "",
             senha,
             status: "ativo",
-            datacadastro: new Date().toISOString().split("T")[0],
+            data_cadastro: new Date().toISOString().split("T")[0], // ✅ corrigido
           },
         },
       ]);
@@ -201,4 +201,5 @@ const PORT = process.env.PORT || 5000;
 http.createServer(handler).listen(PORT, () => {
   console.log(`🚀 Servidor Varal dos Sonhos rodando na porta ${PORT}`);
 });
+
 
