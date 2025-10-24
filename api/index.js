@@ -9,16 +9,17 @@ import enviarEmail from "./lib/enviarEmail.js";
 import http from "http";
 
 // ============================================================
-// 🔑 CONFIGURAÇÃO AIRTABLE
+// 🔑 CONFIGURAÇÃO AIRTABLE (TOKEN ATUAL)
 // ============================================================
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
+const AIRTABLE_TOKEN = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 
-if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID) {
-  console.warn("⚠️ Variáveis do Airtable não configuradas corretamente.");
+if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
+  console.error("⚠️ Faltam variáveis de ambiente AIRTABLE_API_KEY ou AIRTABLE_BASE_ID.");
 }
 
-const base = new Airtable({ apiKey: AIRTABLE_API_KEY }).base(AIRTABLE_BASE_ID);
+// Novo método de autenticação com token pessoal (pat...)
+const base = new Airtable({ apiKey: AIRTABLE_TOKEN }).base(AIRTABLE_BASE_ID);
 
 // ============================================================
 // ⚙️ FUNÇÕES AUXILIARES
@@ -76,13 +77,12 @@ export default async function handler(req, res) {
     // ============================================================
     if ((pathname === "/api/cadastro" || rota === "cadastro") && method === "POST") {
       const body = await parseJsonBody(req);
-      if (!body) return sendJson(res, 400, { error: "Corpo inválido" });
+      const { nome, email, telefone, senha, cidade } = body || {};
 
-      const { nome, email, telefone, senha, cidade } = body;
       if (!nome || !email || !senha)
         return sendJson(res, 400, { error: "Campos obrigatórios faltando." });
 
-      const existentes = await base("doadores")
+      const existentes = await base("doador")
         .select({ filterByFormula: `{email} = '${email}'`, maxRecords: 1 })
         .firstPage();
 
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
 
       const primeiro_nome = nome.split(" ")[0];
 
-      const novo = await base("doadores").create([
+      const novo = await base("doador").create([
         {
           fields: {
             id_doador: `D${Date.now()}`,
@@ -107,7 +107,11 @@ export default async function handler(req, res) {
         },
       ]);
 
-      await enviarEmail(email, "💙 Bem-vindo ao Varal dos Sonhos", `Olá ${nome}, seu cadastro foi realizado com sucesso!`);
+      await enviarEmail(
+        email,
+        "💙 Bem-vindo ao Varal dos Sonhos",
+        `Olá ${nome}, seu cadastro foi realizado com sucesso!`
+      );
 
       return sendJson(res, 200, { success: true, id: novo[0].id });
     }
@@ -117,11 +121,9 @@ export default async function handler(req, res) {
     // ============================================================
     if ((pathname === "/api/login" || rota === "login") && method === "POST") {
       const body = await parseJsonBody(req);
-      if (!body) return sendJson(res, 400, { error: "Corpo inválido" });
+      const { email, senha } = body || {};
 
-      const { email, senha } = body;
-
-      const registros = await base("doadores")
+      const registros = await base("doador")
         .select({ filterByFormula: `{email} = '${email}'`, maxRecords: 1 })
         .firstPage();
 
@@ -231,3 +233,4 @@ const PORT = process.env.PORT || 5000;
 http.createServer(handler).listen(PORT, () => {
   console.log(`Servidor Varal dos Sonhos rodando na porta ${PORT} 🚀`);
 });
+
