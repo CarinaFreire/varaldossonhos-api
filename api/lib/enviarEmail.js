@@ -1,112 +1,53 @@
 // ============================================================
 // 💌 VARAL DOS SONHOS — /api/lib/enviarEmail.js
 // ------------------------------------------------------------
-// Integração real com EmailJS (ou modo simulado se não configurado)
+// 🔧 Integração real com EmailJS (ou modo simulado se não configurado)
 // ------------------------------------------------------------
-// ✅ Variáveis de ambiente (Render):
+// ✅ Variáveis de ambiente (defina no Render):
 //    EMAILJS_SERVICE_ID
 //    EMAILJS_TEMPLATE_ID
-//    EMAILJS_USER_ID  (ou EMAILJS_PUBLIC_KEY)
+//    EMAILJS_PUBLIC_KEY   (substitui o antigo USER_ID)
 // ------------------------------------------------------------
 // 🏆 Recursos:
-//   - Envia e-mails personalizados: cadastro, adoção, atualização
-//   - Mantém compatibilidade total com o template do EmailJS
-//   - Simulação automática se não configurado
+//   - Envia para doador e ONG automaticamente
+//   - Modo simulado se faltar configuração
+//   - Log detalhado no servidor
 // ============================================================
 
 import fetch from "node-fetch";
 
-/**
- * Envia e-mail via EmailJS
- * @param {string} destinatario - E-mail do destinatário
- * @param {string} tipo - Tipo de mensagem (cadastro, adocao, status)
- * @param {object|string} dados - Dados dinâmicos ou mensagem direta
- * @param {number} pontuacao - Pontuação opcional (gamificação)
- */
-export default async function enviarEmail(destinatario, tipo = "geral", dados = {}, pontuacao = 0) {
+// 💙 E-mail oficial da ONG
+const ONG_EMAIL = "varaldossonhossp@gmail.com";
+
+export default async function enviarEmail(destinatario, assunto, mensagem, enviarParaONG = false) {
   const SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
   const TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
-  const USER_ID = process.env.EMAILJS_USER_ID || process.env.EMAILJS_PUBLIC_KEY;
+  const PUBLIC_KEY = process.env.EMAILJS_PUBLIC_KEY || process.env.EMAILJS_USER_ID;
 
-  // ============================================================
-  // ⚠️ Caso EmailJS não esteja configurado
-  // ============================================================
-  if (!SERVICE_ID || !TEMPLATE_ID || !USER_ID) {
+  // ------------------------------------------------------------
+  // 🧩 Modo simulado (sem EmailJS configurado)
+  // ------------------------------------------------------------
+  if (!SERVICE_ID || !TEMPLATE_ID || !PUBLIC_KEY) {
     console.warn("⚠️ EmailJS não configurado. Envio de e-mail será simulado.");
-    console.log("📧 SIMULAÇÃO DE E-MAIL:");
+    console.log("📧 Simulação de envio:");
     console.log("Destinatário:", destinatario);
-    console.log("Tipo:", tipo);
-    console.log("Dados:", dados);
-    return { status: "simulado", mensagem: "Envio de e-mail simulado (modo teste)." };
-  }
+    console.log("Assunto:", assunto);
+    console.log("Mensagem:", mensagem);
 
-  // ============================================================
-  // 🧩 Montagem automática da mensagem
-  // ============================================================
-  let assunto = "Varal dos Sonhos 💙";
-  let mensagem = "";
-
-  if (typeof dados === "string") {
-    mensagem = dados; // permite uso direto de string
-  } else {
-    switch (tipo) {
-      case "cadastro":
-        assunto = "🎉 Cadastro confirmado no Varal dos Sonhos!";
-        mensagem = `
-Olá ${dados.nome || ""}, 💙
-
-Seu cadastro foi realizado com sucesso!
-Agora você já pode adotar uma cartinha e espalhar sonhos ✨
-
-Acesse o site e veja as cartinhas disponíveis:
-https://varaldossonhos.vercel.app
-`;
-        break;
-
-      case "adocao":
-        assunto = "💝 Adoção registrada com sucesso!";
-        mensagem = `
-Olá ${dados.nome || ""}, 💙
-
-Sua adoção foi registrada com sucesso!
-Cartinha(s): ${dados.cartinhas?.join(", ") || "não informadas"}
-Ponto de coleta: ${dados.ponto_coleta || "não informado"}
-
-Aguarde nossa confirmação de entrega do presente 🎁
-`;
-        break;
-
-      case "status":
-        assunto = "📦 Atualização da sua adoção";
-        mensagem = `
-Olá ${dados.nome || ""},
-
-Status atualizado: ${dados.status || "em andamento"}  
-Mensagem: ${dados.mensagem || "Seu presente está a caminho 💙"}
-
-Obrigado por fazer parte do Varal dos Sonhos! 🌟
-`;
-        break;
-
-      default:
-        mensagem = typeof dados === "string" ? dados : "Olá! Obrigado por espalhar sonhos 💙";
+    if (enviarParaONG) {
+      console.log("📨 Copiando simulação para ONG:", ONG_EMAIL);
     }
+
+    return { status: "simulado", mensagem: "Envio simulado (modo teste)." };
   }
 
-  // ============================================================
-  // ✨ Adiciona pontuação (se existir)
-  // ============================================================
-  if (pontuacao > 0) {
-    mensagem += `\n\n✨ Você ganhou ${pontuacao} ponto${pontuacao > 1 ? "s" : ""}!`;
-  }
-
-  // ============================================================
-  // 📦 Monta payload para o EmailJS
-  // ============================================================
+  // ------------------------------------------------------------
+  // 📨 Prepara payload base
+  // ------------------------------------------------------------
   const payload = {
     service_id: SERVICE_ID,
     template_id: TEMPLATE_ID,
-    user_id: USER_ID,
+    user_id: PUBLIC_KEY,
     template_params: {
       to_email: destinatario,
       subject: assunto,
@@ -114,28 +55,47 @@ Obrigado por fazer parte do Varal dos Sonhos! 🌟
     },
   };
 
-  // ============================================================
-  // 🚀 Envio via API EmailJS
-  // ============================================================
-  try {
-    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  // ------------------------------------------------------------
+  // 🔹 Função interna de envio
+  // ------------------------------------------------------------
+  const send = async (to, subject, msg) => {
+    const data = {
+      ...payload,
+      template_params: { to_email: to, subject, message: msg },
+    };
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error("❌ Falha ao enviar e-mail:", errText);
-      throw new Error(errText);
+    try {
+      const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("❌ Falha ao enviar e-mail:", errText);
+        throw new Error(errText);
+      }
+
+      console.log(`✅ E-mail enviado com sucesso para ${to}`);
+      return true;
+    } catch (erro) {
+      console.error("❌ Erro no envio de e-mail:", erro.message);
+      return false;
     }
+  };
 
-    console.log(`✅ E-mail (${tipo}) enviado com sucesso para ${destinatario}`);
-    return { status: "ok", mensagem: "E-mail enviado com sucesso via EmailJS." };
-
-  } catch (erro) {
-    console.error("❌ Erro no envio de e-mail:", erro);
-    return { status: "erro", mensagem: "Falha ao enviar e-mail: " + erro.message };
+  // ------------------------------------------------------------
+  // 💌 Envia para o destinatário e ONG (se solicitado)
+  // ------------------------------------------------------------
+  const resultUser = await send(destinatario, assunto, mensagem);
+  if (enviarParaONG) {
+    const avisoONG = `📢 Nova ação no site!\n\n${mensagem}\n\n(Assunto original: ${assunto})`;
+    await send(ONG_EMAIL, "📬 Notificação - Varal dos Sonhos", avisoONG);
   }
-}
 
+  return {
+    status: resultUser ? "ok" : "erro",
+    mensagem: resultUser ? "E-mails enviados com sucesso." : "Falha ao enviar e-mails.",
+  };
+}
