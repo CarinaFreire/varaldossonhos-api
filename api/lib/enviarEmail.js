@@ -31,7 +31,7 @@ export default async function enviarEmail(destinatario, assunto, mensagem) {
 
 
     // ✉️ Corrige codificação do assunto (UTF-8 + Base64)
-    const assuntoPadrao = `Varal dos Sonhos 💙 — ${assunto}`;
+    const assuntoPadrao = `Varal dos Sonhos — ${assunto}`;
     const assuntoCodificado = `=?UTF-8?B?${Buffer.from(assuntoPadrao).toString("base64")}?=`;
 
 
