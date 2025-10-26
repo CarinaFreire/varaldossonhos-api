@@ -1,72 +1,71 @@
 // ============================================================
-// 💌 Envio de e-mails via Gmail (OAuth2) — com diagnósticos
+// 💌 VARAL DOS SONHOS — Envio de e-mails com Gmail API (OAuth2)
+// ------------------------------------------------------------
+// Requer variáveis no Render:
+//   GMAIL_USER
+//   GOOGLE_CLIENT_ID
+//   GOOGLE_CLIENT_SECRET
+//   GOOGLE_REFRESH_TOKEN
+// ------------------------------------------------------------
+// Envia e-mails tanto para o usuário quanto para a ONG
 // ============================================================
-import nodemailer from "nodemailer";
 
 
-const REQUIRED_VARS = [
-  "GMAIL_USER",
-  "GOOGLE_CLIENT_ID",
-  "GOOGLE_CLIENT_SECRET",
-  "GOOGLE_REFRESH_TOKEN",
-];
-
-
-function checkEnv() {
-  const missing = REQUIRED_VARS.filter(k => !process.env[k]);
-  if (missing.length) {
-    console.warn("⚠️ Variáveis ausentes para e-mail:", missing.join(", "));
-    return false;
-  }
-  return true;
-}
+import { google } from "googleapis";
 
 
 export default async function enviarEmail(destinatario, assunto, mensagem) {
-  // Se faltar algo, simula (não quebra o fluxo)
-  if (!checkEnv()) {
-    console.log("📧 [SIMULAÇÃO] Envio de e-mail:", { destinatario, assunto, mensagem });
-    return { status: "simulado" };
-  }
-
-
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        type: "OAuth2",
-        user: process.env.GMAIL_USER,
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
+    // 🔑 Autenticação OAuth2
+    const oAuth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET
+    );
+    oAuth2Client.setCredentials({
+      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+    });
+
+
+    const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+
+
+    // ✉️ Monta o conteúdo do e-mail
+    const remetente = process.env.GMAIL_USER;
+    const corpoEmail = [
+      `From: Varal dos Sonhos 💙 <${remetente}>`,
+      `To: ${destinatario}`,
+      `Cc: varaldossonhossp@gmail.com`,
+      `Subject: ${assunto}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      mensagem,
+    ].join("\n");
+
+
+    // Codifica em Base64
+    const encodedMessage = Buffer.from(corpoEmail)
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+
+    // 🚀 Envia via Gmail API
+    const resposta = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: encodedMessage,
       },
     });
 
 
-    // Verifica conexão com o Gmail
-    await transporter.verify();
-    console.log("✅ Email transport pronto");
+    console.log(`✅ E-mail enviado para ${destinatario}`);
+    return { status: "ok", data: resposta.data };
 
 
-    // Envia para o usuário + ONG
-    const toList = Array.isArray(destinatario)
-      ? destinatario
-      : [destinatario, "varaldossonhossp@gmail.com"];
-
-
-    const info = await transporter.sendMail({
-      from: `"Varal dos Sonhos 💙" <${process.env.GMAIL_USER}>`,
-      to: toList.join(", "),
-      replyTo: "varaldossonhossp@gmail.com",
-      subject: assunto,
-      text: mensagem,
-    });
-
-
-    console.log(`✉️  E-mail enviado: ${info.messageId} → ${toList.join(", ")}`);
-    return { status: "ok", messageId: info.messageId };
   } catch (erro) {
-    console.error("❌ Erro ao enviar e-mail:", erro?.response || erro?.message || erro);
-    return { status: "erro", mensagem: String(erro?.message || erro) };
+    console.error("❌ Erro ao enviar e-mail:", erro.message);
+    return { status: "erro", mensagem: erro.message };
   }
 }
+
