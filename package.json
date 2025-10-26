@@ -15,6 +15,7 @@
     "dotenv": "^16.6.1",
     "emailjs": "^4.0.3",
     "emailjs-com": "^3.2.0",
+    "googleapis": "^164.1.0",
     "nodemailer": "^7.0.10"
   }
 }
