@@ -1,20 +1,17 @@
 // ============================================================
 // 💌 VARAL DOS SONHOS — envio de e-mails via Gmail (OAuth2)
 // ------------------------------------------------------------
-// Requer variáveis de ambiente configuradas no Render:
-//   GMAIL_USER
-//   GOOGLE_CLIENT_ID
-//   GOOGLE_CLIENT_SECRET
-//   GOOGLE_REFRESH_TOKEN
+// Garante que a API sempre responde (timeout de 4 segundos)
 // ------------------------------------------------------------
-// Envia e-mails tanto para o usuário quanto para o e-mail da ONG
-// ============================================================
 
 
 import nodemailer from "nodemailer";
 
 
 export default async function enviarEmail(destinatario, assunto, mensagem) {
+  console.log("📨 Iniciando envio de e-mail para:", destinatario);
+
+
   try {
     // 🔐 Configuração do transporte OAuth2
     const transporter = nodemailer.createTransport({
@@ -33,20 +30,31 @@ export default async function enviarEmail(destinatario, assunto, mensagem) {
     const mailOptions = {
       from: `"Varal dos Sonhos 💙" <${process.env.GMAIL_USER}>`,
       to: destinatario,
-      cc: "varaldossonhossp@gmail.com", // ✅ Cópia automática para ONG
+      cc: "varaldossonhossp@gmail.com", // cópia automática
       subject: assunto,
       text: mensagem,
     };
 
 
-    // 🚀 Envio do e-mail
-    const info = await transporter.sendMail(mailOptions);
+    // 🚀 Tentativa de envio (timeout 4s)
+    const envioPromise = transporter.sendMail(mailOptions);
+    const resultado = await Promise.race([
+      envioPromise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("⏰ Timeout no envio de e-mail")), 4000)
+      ),
+    ]);
+
+
     console.log(`✅ E-mail enviado com sucesso para ${destinatario}`);
-    return { status: "ok", info };
+    return { status: "ok", info: resultado };
 
 
   } catch (erro) {
     console.error("❌ Erro ao enviar e-mail:", erro.message);
     return { status: "erro", mensagem: erro.message };
+  } finally {
+    console.log("📩 Fluxo de e-mail concluído, prosseguindo com resposta da API...");
   }
 }
+
