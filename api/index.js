@@ -6,8 +6,12 @@
 import dotenv from "dotenv";
 dotenv.config();
 import Airtable from "airtable";
-import enviarEmail from "./lib/enviarEmail.js";
 import http from "http";
+
+
+// 📩 Importa função de envio de e-mail e atualização
+import enviarEmail from "./lib/enviarEmail.js";
+import atualizarMensagemDoacao from "./lib/atualizarStatus.js";
 
 
 // ============================================================
@@ -122,12 +126,16 @@ export default async function handler(req, res) {
       ]);
 
 
-      // 📨 Tentativa de envio, mas sem travar fluxo
-      enviarEmail(email, "💙 Bem-vindo ao Varal dos Sonhos", `Olá ${nome}, seu cadastro foi realizado com sucesso!`)
-        .catch((err) => console.error("Erro no envio de e-mail (cadastro):", err.message));
+      // 💌 E-mail de boas-vindas
+      await enviarEmail(
+        email,
+        "💙 Bem-vindo ao Varal dos Sonhos",
+        `Olá ${nome}, seu cadastro foi realizado com sucesso!`
+      );
 
 
-      return sendJson(res, 200, { success: true, id: novo[0].id, message: "Cadastro realizado com sucesso!" });
+      console.log(`✅ Novo cadastro: ${email}`);
+      return sendJson(res, 200, { success: true, id: novo[0].id });
     }
 
 
@@ -222,7 +230,7 @@ export default async function handler(req, res) {
 
 
       for (const c of cartinhas) {
-        await base("doacoes").create([
+        const novaDoacao = await base("doacoes").create([
           {
             fields: {
               id_doacao: `DOA-${Date.now()}`,
@@ -235,15 +243,11 @@ export default async function handler(req, res) {
             },
           },
         ]);
+
+
+        // ✅ Atualiza mensagem e envia e-mail
+        await atualizarMensagemDoacao(novaDoacao[0].id, "aguardando_entrega", usuarioEmail);
       }
-
-
-      // 📨 Envio de e-mail assíncrono (não trava botão)
-      enviarEmail(
-        usuarioEmail,
-        "💙 Adoção registrada!",
-        "Sua adoção foi registrada com sucesso. Obrigado por espalhar sonhos!"
-      ).catch((err) => console.error("Erro no envio de e-mail (adoção):", err.message));
 
 
       return sendJson(res, 200, { success: true, message: "Adoção registrada com sucesso!" });

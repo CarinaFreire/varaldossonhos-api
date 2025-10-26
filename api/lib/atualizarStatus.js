@@ -1,42 +1,41 @@
 // ============================================================
-// 💙 VARAL DOS SONHOS — /api/lib/atualizarStatus.js
-// Atualiza mensagem e envia notificação por e-mail ao mudar status
+// 💙 VARAL DOS SONHOS — Atualização de status e envio de e-mail
 // ============================================================
 
 
 import Airtable from "airtable";
+import enviarEmail from "./enviarEmail.js";
 import dotenv from "dotenv";
-import enviarEmail from "./enviarEmail.js"; // ✅ integração com o Gmail OAuth
 dotenv.config();
 
 
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
 
 
-export default async function atualizarMensagemDoacao(recordId, status) {
+export default async function atualizarMensagemDoacao(recordId, status, emailDoador) {
   try {
     let mensagem = "";
     const dataHoje = new Date().toLocaleDateString("pt-BR");
 
 
-    // 🧩 Define a mensagem conforme o status
+    // 📝 Define mensagem de acordo com o status
     switch (status) {
       case "aguardando_entrega":
         mensagem = "🎁 Sua cartinha foi adotada! Aguarde confirmação para a compra do presente.";
         break;
       case "confirmada":
-        mensagem = `💙 Adoção confirmada em ${dataHoje}. Obrigado por espalhar sonhos!`;
+        mensagem = `💙 Adoção confirmada em ${dataHoje}! Obrigado por espalhar sonhos.`;
         break;
       case "entregue":
-        mensagem = "💖 Presente entregue à criança com sucesso! Obrigado por fazer parte do Varal dos Sonhos!";
+        mensagem = "💖 Presente entregue à criança com sucesso! Obrigado por fazer parte desse sonho!";
         break;
       default:
-        mensagem = "⚠️ Status desconhecido. Entre em contato com o suporte.";
+        mensagem = "Status desconhecido. Entre em contato com o suporte.";
     }
 
 
-    // 🗂️ Atualiza a mensagem no Airtable
-    const updated = await base("doacoes").update([
+    // 🗂️ Atualiza campo no Airtable
+    await base("doacoes").update([
       {
         id: recordId,
         fields: { mensagem_confirmacao: mensagem },
@@ -44,36 +43,24 @@ export default async function atualizarMensagemDoacao(recordId, status) {
     ]);
 
 
-    console.log(`✅ Mensagem atualizada para "${status}" no registro ${recordId}`);
+    console.log(`✅ Mensagem atualizada (${status}) no registro ${recordId}`);
 
 
-    // ✉️ Envia e-mail automático para o doador
-    const registro = await base("doacoes").find(recordId);
-    const emailDoador = registro.fields.doador_email || registro.fields.doador || null;
-
-
-    if (emailDoador) {
-      await enviarEmail(
-        emailDoador,
-        "Atualização da sua adoção 💙",
-        mensagem
-      );
-    }
-
-
-    // 📬 Notifica também a ONG
+    // 💌 Envia e-mail ao doador e à ONG
     await enviarEmail(
-      "varaldossonhossp@gmail.com",
-      `📦 Atualização de doação (${status})`,
-      `O status da doação ${recordId} foi alterado para "${status}".`
+      emailDoador,
+      "Atualização da sua adoção 💙",
+      mensagem
     );
 
 
+    console.log(`📧 E-mail de atualização enviado para ${emailDoador}`);
+
+
     return true;
-
-
   } catch (erro) {
-    console.error("❌ Erro ao atualizar mensagem:", erro);
+    console.error("❌ Erro ao atualizar mensagem e enviar e-mail:", erro);
     return false;
   }
 }
+
