@@ -11,7 +11,7 @@ import http from "http";
 
 
 // ============================================================
-// 🔑 CONFIGURAÇÃO AIRTABLE (TOKEN ATUAL)
+// 🔑 CONFIGURAÇÃO AIRTABLE
 // ============================================================
 const AIRTABLE_TOKEN = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
@@ -22,7 +22,6 @@ if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
 }
 
 
-// Novo método de autenticação com token pessoal (pat...)
 const base = new Airtable({ apiKey: AIRTABLE_TOKEN }).base(AIRTABLE_BASE_ID);
 
 
@@ -123,14 +122,19 @@ export default async function handler(req, res) {
       ]);
 
 
+      // Envio do e-mail de boas-vindas
       await enviarEmail(
         email,
-        "💙 Bem-vindo ao Varal dos Sonhos",
+        "Varal dos Sonhos 💙",
         `Olá ${nome}, seu cadastro foi realizado com sucesso!`
       );
 
 
-      return sendJson(res, 200, { success: true, id: novo[0].id });
+      return sendJson(res, 200, {
+        success: true,
+        mensagem: "Cadastro realizado com sucesso!",
+        id: novo[0].id,
+      });
     }
 
 
@@ -192,87 +196,41 @@ export default async function handler(req, res) {
 
 
     // ============================================================
-    // 📍 PONTOS DE COLETA
-    // ============================================================
-    if ((pathname === "/api/pontosdecoleta" || rota === "pontosdecoleta") && method === "GET") {
-      const registros = await base("pontosdecoleta").select().all();
-
-
-      const pontos = registros.map((r) => ({
-        id: r.id,
-        id_ponto: r.fields.id_ponto || "",
-        nome_local: r.fields.nome_local || "",
-        endereco: r.fields.endereco || "",
-        telefone: r.fields.telefone || "",
-        email: r.fields.email || "",
-        horario_funcionamento: r.fields.horario_funcionamento || "",
-        responsavel: r.fields.responsavel || "",
-        status: r.fields.status || "",
-        data_cadastro: r.fields.data_cadastro || "",
-      }));
-
-
-      return sendJson(res, 200, pontos);
-    }
-
-
-    // ============================================================
-    // 💝 REGISTRAR ADOÇÃO (grava NOME do doador)
+    // 💝 REGISTRAR ADOÇÃO
     // ============================================================
     if ((pathname === "/api/adocoes" || rota === "adocoes") && method === "POST") {
       const body = await parseJsonBody(req);
-      const { usuarioEmail, cartinhas } = body || {};
+      const { usuarioNome, usuarioEmail, cartinhas } = body;
 
 
-      if (!usuarioEmail || !Array.isArray(cartinhas) || cartinhas.length === 0) {
-        return sendJson(res, 400, { error: "Dados inválidos para adoção." });
-      }
-
-
-      // 🔍 Busca o nome do doador pelo e-mail
-      let nomeDoador = "Doador desconhecido";
-      try {
-        const resultado = await base("doador")
-          .select({ filterByFormula: `{email} = '${usuarioEmail}'`, maxRecords: 1 })
-          .firstPage();
-
-
-        if (resultado.length > 0) {
-          nomeDoador = resultado[0].fields.nome || resultado[0].fields.primeiro_nome || nomeDoador;
-        }
-      } catch (erro) {
-        console.warn("⚠️ Erro ao buscar nome do doador:", erro.message);
-      }
-
-
-      // 💾 Registra cada adoção
       for (const c of cartinhas) {
         await base("doacoes").create([
           {
             fields: {
               id_doacao: `DOA-${Date.now()}`,
-              doador: nomeDoador, // 👈 agora salva o nome, não o e-mail
+              doador: usuarioNome || usuarioEmail, // 👈 agora grava o nome
               cartinha: c.nome || "",
               ponto_coleta: c.ponto_coleta || "",
               data_doacao: new Date().toISOString().split("T")[0],
               status_doacao: "aguardando_entrega",
-              mensagem_confirmacao:
-                "🎁 Sua cartinha foi adotada! Aguarde confirmação para compra do presente.",
+              mensagem_confirmacao: "🎁 Sua cartinha foi adotada! Aguarde confirmação para compra do presente.",
             },
           },
         ]);
       }
 
 
-      // 💌 Envia confirmação
       await enviarEmail(
         usuarioEmail,
-        "💙 Adoção registrada!",
-        "Sua adoção foi registrada com sucesso. Obrigado por espalhar sonhos!"
+        "Varal dos Sonhos 💙",
+        "🎁 Sua cartinha foi adotada! Aguarde confirmação para compra do presente."
       );
 
 
-      return sendJson(res, 200, { success: true, message: "Adoção registrada com sucesso!" });
+      return sendJson(res, 200, {
+        success: true,
+        mensagem: "Adoção registrada com sucesso!",
+      });
     }
 
 
@@ -291,4 +249,3 @@ const PORT = process.env.PORT || 5000;
 http.createServer(handler).listen(PORT, () => {
   console.log(`Servidor Varal dos Sonhos rodando na porta ${PORT} 🚀`);
 });
-
