@@ -1,19 +1,36 @@
 // ============================================================
-// 💌 VARAL DOS SONHOS — envio de e-mails via Gmail (OAuth2)
-// ------------------------------------------------------------
-// Garante que a API sempre responde (timeout de 4 segundos)
-// ------------------------------------------------------------
-
-
+// 💌 Envio de e-mails via Gmail (OAuth2) — com diagnósticos
+// ============================================================
 import nodemailer from "nodemailer";
 
 
+const REQUIRED_VARS = [
+  "GMAIL_USER",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "GOOGLE_REFRESH_TOKEN",
+];
+
+
+function checkEnv() {
+  const missing = REQUIRED_VARS.filter(k => !process.env[k]);
+  if (missing.length) {
+    console.warn("⚠️ Variáveis ausentes para e-mail:", missing.join(", "));
+    return false;
+  }
+  return true;
+}
+
+
 export default async function enviarEmail(destinatario, assunto, mensagem) {
-  console.log("📨 Iniciando envio de e-mail para:", destinatario);
+  // Se faltar algo, simula (não quebra o fluxo)
+  if (!checkEnv()) {
+    console.log("📧 [SIMULAÇÃO] Envio de e-mail:", { destinatario, assunto, mensagem });
+    return { status: "simulado" };
+  }
 
 
   try {
-    // 🔐 Configuração do transporte OAuth2
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -26,35 +43,30 @@ export default async function enviarEmail(destinatario, assunto, mensagem) {
     });
 
 
-    // ✉️ Configurações do e-mail
-    const mailOptions = {
+    // Verifica conexão com o Gmail
+    await transporter.verify();
+    console.log("✅ Email transport pronto");
+
+
+    // Envia para o usuário + ONG
+    const toList = Array.isArray(destinatario)
+      ? destinatario
+      : [destinatario, "varaldossonhossp@gmail.com"];
+
+
+    const info = await transporter.sendMail({
       from: `"Varal dos Sonhos 💙" <${process.env.GMAIL_USER}>`,
-      to: destinatario,
-      cc: "varaldossonhossp@gmail.com", // cópia automática
+      to: toList.join(", "),
+      replyTo: "varaldossonhossp@gmail.com",
       subject: assunto,
       text: mensagem,
-    };
+    });
 
 
-    // 🚀 Tentativa de envio (timeout 4s)
-    const envioPromise = transporter.sendMail(mailOptions);
-    const resultado = await Promise.race([
-      envioPromise,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("⏰ Timeout no envio de e-mail")), 4000)
-      ),
-    ]);
-
-
-    console.log(`✅ E-mail enviado com sucesso para ${destinatario}`);
-    return { status: "ok", info: resultado };
-
-
+    console.log(`✉️  E-mail enviado: ${info.messageId} → ${toList.join(", ")}`);
+    return { status: "ok", messageId: info.messageId };
   } catch (erro) {
-    console.error("❌ Erro ao enviar e-mail:", erro.message);
-    return { status: "erro", mensagem: erro.message };
-  } finally {
-    console.log("📩 Fluxo de e-mail concluído, prosseguindo com resposta da API...");
+    console.error("❌ Erro ao enviar e-mail:", erro?.response || erro?.message || erro);
+    return { status: "erro", mensagem: String(erro?.message || erro) };
   }
 }
-
