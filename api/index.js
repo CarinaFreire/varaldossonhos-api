@@ -2,11 +2,13 @@
 // 💙 VARAL DOS SONHOS — API UNIFICADA (Render)
 // ============================================================
 
+
 import dotenv from "dotenv";
 dotenv.config();
 import Airtable from "airtable";
 import enviarEmail from "./lib/enviarEmail.js";
 import http from "http";
+
 
 // ============================================================
 // 🔑 CONFIGURAÇÃO AIRTABLE (TOKEN ATUAL)
@@ -14,12 +16,14 @@ import http from "http";
 const AIRTABLE_TOKEN = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 
+
 if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID) {
   console.error("⚠️ Faltam variáveis de ambiente AIRTABLE_API_KEY ou AIRTABLE_BASE_ID.");
 }
 
-// Novo método de autenticação com token pessoal (pat...)
+
 const base = new Airtable({ apiKey: AIRTABLE_TOKEN }).base(AIRTABLE_BASE_ID);
+
 
 // ============================================================
 // ⚙️ FUNÇÕES AUXILIARES
@@ -33,6 +37,7 @@ function sendJson(res, status, data) {
   res.end(JSON.stringify(data, null, 2));
 }
 
+
 async function parseJsonBody(req) {
   const chunks = [];
   for await (const c of req) chunks.push(c);
@@ -44,6 +49,7 @@ async function parseJsonBody(req) {
   }
 }
 
+
 function getRotaFromUrl(reqUrl, headers) {
   try {
     const u = new URL(reqUrl, `http://${headers.host}`);
@@ -53,6 +59,7 @@ function getRotaFromUrl(reqUrl, headers) {
     return { fullUrl: null, rota: parts[1] || null };
   }
 }
+
 
 // ============================================================
 // 🌈 HANDLER PRINCIPAL
@@ -67,9 +74,11 @@ export default async function handler(req, res) {
     return;
   }
 
+
   const { method, url, headers } = req;
   const { fullUrl, rota } = getRotaFromUrl(url, headers);
   const pathname = fullUrl ? fullUrl.pathname : url.split("?")[0];
+
 
   try {
     // ============================================================
@@ -79,17 +88,22 @@ export default async function handler(req, res) {
       const body = await parseJsonBody(req);
       const { nome, email, telefone, senha, cidade } = body || {};
 
+
       if (!nome || !email || !senha)
         return sendJson(res, 400, { error: "Campos obrigatórios faltando." });
+
 
       const existentes = await base("doador")
         .select({ filterByFormula: `{email} = '${email}'`, maxRecords: 1 })
         .firstPage();
 
+
       if (existentes.length > 0)
         return sendJson(res, 409, { error: "E-mail já cadastrado." });
 
+
       const primeiro_nome = nome.split(" ")[0];
+
 
       const novo = await base("doador").create([
         {
@@ -107,14 +121,17 @@ export default async function handler(req, res) {
         },
       ]);
 
+
       await enviarEmail(
         email,
         "💙 Bem-vindo ao Varal dos Sonhos",
         `Olá ${nome}, seu cadastro foi realizado com sucesso!`
       );
 
+
       return sendJson(res, 200, { success: true, id: novo[0].id });
     }
+
 
     // ============================================================
     // 🔐 LOGIN DE DOADOR
@@ -123,16 +140,20 @@ export default async function handler(req, res) {
       const body = await parseJsonBody(req);
       const { email, senha } = body || {};
 
+
       const registros = await base("doador")
         .select({ filterByFormula: `{email} = '${email}'`, maxRecords: 1 })
         .firstPage();
 
+
       if (registros.length === 0)
         return sendJson(res, 404, { error: "E-mail não encontrado." });
+
 
       const usuario = registros[0].fields;
       if (usuario.senha !== senha)
         return sendJson(res, 401, { error: "Senha incorreta." });
+
 
       return sendJson(res, 200, {
         success: true,
@@ -145,6 +166,7 @@ export default async function handler(req, res) {
       });
     }
 
+
     // ============================================================
     // 💌 CARTINHAS DISPONÍVEIS
     // ============================================================
@@ -152,6 +174,7 @@ export default async function handler(req, res) {
       const registros = await base("cartinhas")
         .select({ filterByFormula: "{status} = 'disponível'" })
         .all();
+
 
       const cartinhas = registros.map((r) => ({
         id: r.id,
@@ -162,14 +185,17 @@ export default async function handler(req, res) {
         status: r.fields.status || "disponível",
       }));
 
+
       return sendJson(res, 200, cartinhas);
     }
+
 
     // ============================================================
     // 📍 PONTOS DE COLETA
     // ============================================================
     if ((pathname === "/api/pontosdecoleta" || rota === "pontosdecoleta") && method === "GET") {
       const registros = await base("pontosdecoleta").select().all();
+
 
       const pontos = registros.map((r) => ({
         id: r.id,
@@ -184,8 +210,10 @@ export default async function handler(req, res) {
         data_cadastro: r.fields.data_cadastro || "",
       }));
 
+
       return sendJson(res, 200, pontos);
     }
+
 
     // ============================================================
     // 💝 REGISTRAR ADOÇÃO
@@ -193,6 +221,7 @@ export default async function handler(req, res) {
     if ((pathname === "/api/adocoes" || rota === "adocoes") && method === "POST") {
       const body = await parseJsonBody(req);
       const { usuarioEmail, cartinhas } = body;
+
 
       for (const c of cartinhas) {
         await base("doacoes").create([
@@ -204,11 +233,13 @@ export default async function handler(req, res) {
               ponto_coleta: c.ponto_coleta || "",
               data_doacao: new Date().toISOString().split("T")[0],
               status_doacao: "aguardando_entrega",
-              mensagem_confirmacao: "🎁 Sua cartinha foi adotada! Aguarde confirmação para compra do presente.",
+              mensagem_confirmacao:
+                "🎁 Sua cartinha foi adotada! Aguarde confirmação para compra do presente.",
             },
           },
         ]);
       }
+
 
       await enviarEmail(
         usuarioEmail,
@@ -216,8 +247,10 @@ export default async function handler(req, res) {
         "Sua adoção foi registrada com sucesso. Obrigado por espalhar sonhos!"
       );
 
+
       return sendJson(res, 200, { success: true, message: "Adoção registrada com sucesso!" });
     }
+
 
     return sendJson(res, 404, { erro: "Rota não encontrada." });
   } catch (erro) {
@@ -226,6 +259,7 @@ export default async function handler(req, res) {
   }
 }
 
+
 // ============================================================
 // 🚀 INICIALIZAÇÃO DO SERVIDOR
 // ============================================================
@@ -233,4 +267,5 @@ const PORT = process.env.PORT || 5000;
 http.createServer(handler).listen(PORT, () => {
   console.log(`Servidor Varal dos Sonhos rodando na porta ${PORT} 🚀`);
 });
+
 
