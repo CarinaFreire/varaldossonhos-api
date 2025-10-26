@@ -94,7 +94,7 @@ export default async function handler(req, res) {
 
 
       console.log("📬 Enviando e-mail de boas-vindas para:", email);
-      await enviarEmail(email, "Varal dos Sonhos 💙", `Olá ${nome}, seu cadastro foi realizado com sucesso!`);
+      await enviarEmail(email, "Cadastro realizado com sucesso", `Olá ${nome}, seu cadastro foi realizado com sucesso!`);
       console.log("✅ Cadastro finalizado para:", email);
 
 
@@ -165,12 +165,42 @@ export default async function handler(req, res) {
 
       await enviarEmail(
         usuarioEmail,
-        "Varal dos Sonhos 💙",
+        "Adoção registrada com sucesso",
         "🎁 Sua cartinha foi adotada! Aguarde confirmação para a compra do presente."
       );
 
 
       return sendJson(res, 200, { success: true, mensagem: "Adoção registrada com sucesso!" });
+    }
+
+
+    // ============================================================
+    // 🔄 ATUALIZAÇÃO DE STATUS DE ADOÇÃO
+    // ============================================================
+    if (pathname === "/api/atualizar-status" && method === "POST") {
+      const { idDoacao, novoStatus, emailDoador, nomeDoador } = await parseJsonBody(req);
+
+
+      await base("doacoes").update([
+        {
+          id: idDoacao,
+          fields: { status_doacao: novoStatus },
+        },
+      ]);
+
+
+      let mensagemStatus = "";
+      if (novoStatus === "confirmada") {
+        mensagemStatus = `🎁 Olá ${nomeDoador}, sua adoção foi confirmada! Agora você pode comprar o presente e entregá-lo no ponto de coleta.`;
+      } else if (novoStatus === "entregue") {
+        mensagemStatus = `💙 Olá ${nomeDoador}, seu presente foi entregue! Obrigado por fazer parte do Varal dos Sonhos!`;
+      } else {
+        mensagemStatus = `Atualização no status da sua adoção: ${novoStatus}`;
+      }
+
+
+      await enviarEmail(emailDoador, "Atualização sobre sua adoção", mensagemStatus);
+      return sendJson(res, 200, { success: true, mensagem: "Status atualizado e e-mail enviado." });
     }
 
 
