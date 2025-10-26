@@ -30,23 +30,24 @@ export default async function enviarEmail(destinatario, assunto, mensagem) {
     const remetente = process.env.GMAIL_USER;
 
 
-    // ✉️ Assunto padronizado
-    const assuntoFinal = `Varal dos Sonhos 💙 — ${assunto}`;
+    // ✉️ Corrige codificação do assunto (UTF-8 + Base64)
+    const assuntoPadrao = `Varal dos Sonhos 💙 — ${assunto}`;
+    const assuntoCodificado = `=?UTF-8?B?${Buffer.from(assuntoPadrao).toString("base64")}?=`;
 
 
-    // 📧 Corpo do e-mail (texto simples)
+    // 📧 Corpo do e-mail
     const corpoEmail = [
       `From: "Varal dos Sonhos 💙" <${remetente}>`,
       `To: ${destinatario}`,
       `Cc: varaldossonhossp@gmail.com`,
-      `Subject: ${assuntoFinal}`,
+      `Subject: ${assuntoCodificado}`,
       "Content-Type: text/plain; charset=UTF-8",
       "",
       mensagem,
     ].join("\n");
 
 
-    // 🧩 Codifica em Base64
+    // 🔠 Codifica mensagem completa em Base64 para envio
     const encodedMessage = Buffer.from(corpoEmail)
       .toString("base64")
       .replace(/\+/g, "-")
@@ -68,3 +69,4 @@ export default async function enviarEmail(destinatario, assunto, mensagem) {
     return { status: "erro", mensagem: erro.message };
   }
 }
+
