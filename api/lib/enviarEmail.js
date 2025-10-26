@@ -1,81 +1,68 @@
 // ============================================================
 // 💌 VARAL DOS SONHOS — envio de e-mails via Gmail (OAuth2)
 // ------------------------------------------------------------
-// Requer variáveis de ambiente configuradas no Render:
-//   GMAIL_USER
-//   GOOGLE_CLIENT_ID
-//   GOOGLE_CLIENT_SECRET
-//   GOOGLE_REFRESH_TOKEN
-// ------------------------------------------------------------
-// Envia e-mails tanto para o usuário quanto para a ONG
+// Corrigido para:
+//  ✅ garantir timeout curto (Render não trava)
+//  ✅ logar erro de autenticação claramente
+//  ✅ continuar execução mesmo que o e-mail falhe
 // ============================================================
 
 
 import nodemailer from "nodemailer";
 import { google } from "googleapis";
-import dotenv from "dotenv";
-dotenv.config();
 
 
 export default async function enviarEmail(destinatario, assunto, mensagem) {
   try {
-    // 🔐 Autenticação OAuth2
+    const { GMAIL_USER, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN } = process.env;
+
+
+    if (!GMAIL_USER || !GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) {
+      console.warn("⚠️ Variáveis ausentes para e-mail. Simulando envio.");
+      console.log("📧 [SIMULAÇÃO] Envio de e-mail:", { destinatario, assunto, mensagem });
+      return { status: "simulado" };
+    }
+
+
     const OAuth2 = google.auth.OAuth2;
-    const oauth2Client = new OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      "https://developers.google.com/oauthplayground"
-    );
+    const oauth2Client = new OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+    oauth2Client.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
 
 
-    oauth2Client.setCredentials({
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
-    });
+    const accessToken = await oauth2Client.getAccessToken();
 
 
-    const accessToken = await new Promise((resolve, reject) => {
-      oauth2Client.getAccessToken((err, token) => {
-        if (err || !token) reject("Falha ao gerar access token");
-        resolve(token);
-      });
-    });
-
-
-    // 🚀 Configuração do transporte (SMTP Gmail)
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
       auth: {
         type: "OAuth2",
-        user: process.env.GMAIL_USER,
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-        accessToken,
+        user: GMAIL_USER,
+        clientId: GOOGLE_CLIENT_ID,
+        clientSecret: GOOGLE_CLIENT_SECRET,
+        refreshToken: GOOGLE_REFRESH_TOKEN,
+        accessToken: accessToken?.token,
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 5000,
     });
 
 
-    // ✉️ Configurações do e-mail
     const mailOptions = {
-      from: `"Varal dos Sonhos 💙" <${process.env.GMAIL_USER}>`,
+      from: `"Varal dos Sonhos 💙" <${GMAIL_USER}>`,
       to: destinatario,
-      cc: "varaldossonhossp@gmail.com", // ONG recebe cópia
-      subject: "Varal dos Sonhos 💙",
+      cc: "varaldossonhossp@gmail.com",
+      subject: assunto,
       text: mensagem,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
     };
 
 
-    // 📤 Envia o e-mail
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ E-mail enviado para ${destinatario}`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ E-mail enviado para ${destinatario} (${info.messageId})`);
     return { status: "ok" };
-
-
   } catch (erro) {
-    console.error("❌ Erro ao enviar e-mail:", erro.message || erro);
+    console.error("❌ Erro no envio de e-mail:", erro.message);
     return { status: "erro", mensagem: erro.message };
   }
 }
